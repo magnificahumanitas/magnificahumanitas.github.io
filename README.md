@@ -9,7 +9,7 @@ GitHub Pages vanity URL for **Magnifica Humanitas** — an interactive reader fo
 ```
 User visits magnificahumanitas.github.io
   → GitHub Pages serves index.html (iframe wrapper)
-    → iframe loads https://atlas-server.taila932a4.ts.net/magnifica/
+    → iframe loads https://magnificahumanitas.taila932a4.ts.net/
       → Tailscale Funnel (TLS) → Caddy → magnifica-humanitas container
 ```
 
