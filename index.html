@@ -21,6 +21,16 @@
   <link rel="apple-touch-icon" sizes="180x180" href="https://magnificahumanitas.taila932a4.ts.net/apple-touch-icon.png" />
   <meta name="theme-color" content="#FAFAF8" />
 
+  <!-- Standalone (no URL bar) when added to the iOS home screen.
+       iOS reads these from THIS top-level document only — it ignores the
+       same tags inside the framed app. Must live on the bookmarked page. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Magnifica" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <!-- Android/Chrome install-as-app. iOS uses the meta tags above, not this. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+
   <meta property="og:type" content="article" />
   <meta property="og:title" content="Magnifica Humanitas — Pope Leo XIV" />
   <meta property="og:description" content="Encyclical Letter on Safeguarding the Human Person in the Time of Artificial Intelligence" />
