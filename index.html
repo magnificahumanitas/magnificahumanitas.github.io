@@ -1,8 +1,19 @@
 <!DOCTYPE html>
+<!--
+  GitHub Pages wrapper for magnificahumanitas.github.io — full-screen iframe of
+  the encyclical reader served via Tailscale Funnel.
+
+  Hardened over the previous wrapper:
+   1. iOS Safari iframe collapse: `position:fixed; inset:0` + `100dvh` instead of
+      `height:100%` (which collapses to 0 on mobile Safari).
+   2. Blank-white on a failed/slow funnel load: a cream loading screen shows first,
+      the iframe reveals on `load`, and a watchdog offers Reload (and one auto-retry)
+      if the framed app never loads (e.g. a Tailscale Funnel TLS hiccup over cellular).
+-->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Magnifica Humanitas — Pope Leo XIV</title>
   <meta name="description" content="Encyclical Letter Magnifica Humanitas of His Holiness Pope Leo XIV on Safeguarding the Human Person in the Time of Artificial Intelligence">
 
@@ -18,19 +29,91 @@
   <meta property="og:image:height" content="512" />
   <meta property="og:url" content="https://magnificahumanitas.github.io/" />
   <meta property="og:site_name" content="Magnifica Humanitas" />
-
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Magnifica Humanitas — Pope Leo XIV" />
   <meta name="twitter:description" content="Encyclical Letter on Safeguarding the Human Person in the Time of Artificial Intelligence" />
   <meta name="twitter:image" content="https://magnificahumanitas.taila932a4.ts.net/icon-512.png" />
 
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital@0;1&display=swap" rel="stylesheet" />
+
   <style>
-    * { margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; }
-    iframe { width: 100%; height: 100%; border: none; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #FAFAF8; }
+    /* Fill the viewport robustly on iOS Safari: fixed + dvh, vh fallback. */
+    #frame, #cover {
+      position: fixed; inset: 0;
+      width: 100%; height: 100vh; height: 100dvh;
+      border: none;
+    }
+    #frame { opacity: 0; transition: opacity .4s ease; }
+    #frame.ready { opacity: 1; }
+    #cover {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1.2rem; padding: 2rem; text-align: center;
+      background: #FAFAF8;
+      font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+      color: #4A3D2A;
+    }
+    #cover.hidden { display: none; }
+    #cover .title { font-size: 1.5rem; font-style: italic; color: #8B2332; opacity: .9; }
+    #cover .msg { font-size: 1rem; line-height: 1.6; max-width: 28rem; }
+    #cover button {
+      font-family: inherit; font-size: 1rem; color: #FAFAF8; background: #8B2332;
+      border: none; border-radius: 4px; padding: .6rem 1.4rem; cursor: pointer;
+      display: none;
+    }
+    #cover.stuck button { display: inline-block; }
   </style>
 </head>
 <body>
-  <iframe src="https://magnificahumanitas.taila932a4.ts.net/" title="Magnifica Humanitas" referrerpolicy="strict-origin" allow="clipboard-write; storage-access" loading="eager"></iframe>
+  <div id="cover">
+    <p class="title">Magnifica Humanitas</p>
+    <p class="msg" id="cover-msg">Loading the encyclical…</p>
+    <button id="reload" type="button" onclick="location.reload()">Reload</button>
+  </div>
+
+  <iframe id="frame"
+          src="https://magnificahumanitas.taila932a4.ts.net/"
+          title="Magnifica Humanitas"
+          referrerpolicy="strict-origin"
+          allow="clipboard-write; storage-access"
+          loading="eager"></iframe>
+
+  <script>
+    (function () {
+      var frame = document.getElementById('frame');
+      var cover = document.getElementById('cover');
+      var msg   = document.getElementById('cover-msg');
+      var loaded = false;
+
+      // Cross-origin iframes still fire `load` when the framed page loads
+      // (you just can't read its contents). Reveal the app, hide the cover.
+      frame.addEventListener('load', function () {
+        loaded = true;
+        frame.classList.add('ready');
+        cover.classList.add('hidden');
+      });
+
+      // Watchdog: if the framed app hasn't loaded in 12s (e.g. a Funnel TLS
+      // hiccup over cellular), auto-retry once, then offer a manual Reload.
+      setTimeout(function () {
+        if (loaded) return;
+        if (sessionStorage.getItem('mh-retry') !== '1') {
+          try { sessionStorage.setItem('mh-retry', '1'); } catch (e) {}
+          location.reload();
+          return;
+        }
+        msg.textContent = 'Having trouble connecting. Please check your connection and try again.';
+        cover.classList.add('stuck');
+      }, 12000);
+
+      // Clear the one-shot retry flag once we successfully load.
+      frame.addEventListener('load', function () {
+        try { sessionStorage.removeItem('mh-retry'); } catch (e) {}
+      });
+    })();
+  </script>
 </body>
 </html>
