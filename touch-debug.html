@@ -65,6 +65,8 @@ pop.querySelectorAll('.sw').forEach(sw => sw.addEventListener('click', () => { l
 
 document.addEventListener('annotation-create', (e) => {
   const info = e.detail.info
+  const lyr = document.querySelector('[data-mh-preview]')
+  log('preview layer: ' + (lyr ? (lyr.children.length+' cells, first top='+(lyr.firstChild?lyr.firstChild.style.top:'-')) : 'NONE'))
   log('✓ annotation-create  p'+info.paragraphIdx+' ['+info.startOffset+','+info.endOffset+'] "'+info.selectedText.slice(0,24)+'"')
   lbl.textContent = info.selectedText
   pop.style.display='flex'
