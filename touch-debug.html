@@ -49,6 +49,27 @@
     return {kind:'none', range:null};
   }
 
+  // ---- NEW fixed hit-testing (mirrors touchSelectionCore.js fix) ----
+  function paragraphAtPoint(x,y){ var el=document.elementFromPoint(x,y); return el&&el.closest?el.closest('[data-paragraph-idx]'):null; }
+  function buildCharMap(para){
+    var map=[], walker=document.createTreeWalker(para, NodeFilter.SHOW_TEXT), range=document.createRange(), node;
+    while((node=walker.nextNode())){
+      if(node.parentElement&&node.parentElement.closest('[data-no-select]')) continue;
+      var len=node.textContent.length;
+      for(var i=0;i<len;i++){ range.setStart(node,i); range.setEnd(node,i+1); var r=range.getBoundingClientRect(); if(r.width||r.height) map.push({node:node,offset:i,left:r.left,right:r.right,top:r.top,bottom:r.bottom}); }
+    }
+    return map;
+  }
+  function charAtPointInMap(map,x,y){
+    var best=null,bestDist=Infinity;
+    for(var k=0;k<map.length;k++){ var c=map[k]; if(y>=c.top&&y<=c.bottom){ if(x>=c.left&&x<=c.right) return c; var d=x<c.left?c.left-x:x-c.right; if(d<bestDist){bestDist=d;best=c;} } }
+    return best;
+  }
+  function caretInfoFromMap(x,y,para,map){
+    if(document.caretRangeFromPoint){ var r=document.caretRangeFromPoint(x,y); if(r&&r.startContainer.nodeType===3){ var cp=r.startContainer.parentElement&&r.startContainer.parentElement.closest('[data-paragraph-idx]'); if(cp===para) return {node:r.startContainer,offset:r.startOffset,via:'caret'}; } }
+    var c=charAtPointInMap(map,x,y); return c?{node:c.node,offset:c.offset,via:'map'}:null;
+  }
+
   // ---- caret hypothesis test ----
   document.getElementById('caretBtn').addEventListener('click', function(){
     var r = p0.getBoundingClientRect();
@@ -65,22 +86,25 @@
   });
   document.getElementById('clrBtn').addEventListener('click', function(){ hud.innerHTML=''; });
 
-  // ---- long-press trace (mirrors the real controller) ----
-  var LONG=400, MOVE=10;
-  var phase='idle', timer=null, sx=0, sy=0, moves=0, maxMove=0;
-  function reset(reason){ if(timer){clearTimeout(timer);timer=null;} if(phase!=='idle') log('reset ('+reason+') from phase='+phase); phase='idle'; moves=0; maxMove=0; }
+  // ---- long-press trace (mirrors the FIXED controller) ----
+  var LONG=400, MOVE=20;
+  var phase='idle', timer=null, sx=0, sy=0, moves=0, maxMove=0, para=null, charMap=null;
+  function reset(reason){ if(timer){clearTimeout(timer);timer=null;} if(phase!=='idle') log('reset ('+reason+') from phase='+phase); phase='idle'; moves=0; maxMove=0; para=null; charMap=null; }
   document.addEventListener('touchstart', function(e){
     var t=e.touches[0]; if(!t) return;
     log('touchstart target='+nodeDesc(e.target)+' @('+Math.round(t.clientX)+','+Math.round(t.clientY)+') cancelable='+e.cancelable);
     sx=t.clientX; sy=t.clientY; moves=0; maxMove=0; phase='pressing';
     timer=setTimeout(function(){
       if(phase!=='pressing'){ log('longpress timer: phase no longer pressing ('+phase+')'); return; }
-      var res=pointToRange(sx,sy);
-      log('LONGPRESS fired → '+res.kind+' caret='+(res.range?nodeDesc(res.range.startContainer)+' off='+res.range.startOffset : 'NULL'));
-      if(!res.range){ log('  ✗ no caret → selection ABORTS (likely root cause)'); reset('no-caret'); return; }
-      if(res.range.startContainer.nodeType!==3){ log('  ✗ caret not a TEXT node → wordRangeAt returns null → ABORTS'); reset('not-text'); return; }
+      para=paragraphAtPoint(sx,sy);
+      if(!para){ log('  ✗ not on a paragraph (elementFromPoint) → ABORTS'); reset('no-para'); return; }
+      charMap=buildCharMap(para);
+      var c=caretInfoFromMap(sx,sy,para,charMap);
+      log('LONGPRESS fired → para[p'+para.getAttribute('data-paragraph-idx')+'] charMap='+charMap.length+' caret='+(c?('via '+c.via+' off='+c.offset):'NULL'));
+      if(!c){ log('  ✗ no caret from map → ABORTS'); reset('no-caret'); return; }
+      var wr=document.createRange(); var w=wordAt2(c.node,c.offset); wr.setStart(c.node,w.s); wr.setEnd(c.node,w.e);
       phase='selecting';
-      log('  ✓ SELECTING started (word="'+wordAt(res.range)+'")');
+      log('  ✓ SELECTING started (word="'+wr.toString()+'")');
     }, LONG);
   }, {passive:false});
   document.addEventListener('touchmove', function(e){
@@ -96,10 +120,14 @@
 
   function wordAt(range){
     var n=range.startContainer; if(n.nodeType!==3) return '?';
-    var txt=n.textContent, o=range.startOffset, s=o,e=o;
+    var r=wordAt2(n, range.startOffset); return n.textContent.slice(r.s,r.e);
+  }
+  function wordAt2(node, offset){
+    var txt=node.textContent, s=offset, e=offset;
     var isW=function(c){return c&&/\S/.test(c)&&!/[.,;:!?()"']/.test(c)};
+    if(!isW(txt[s])&&isW(txt[s-1])){ s--; e--; }
     while(s>0&&isW(txt[s-1]))s--; while(e<txt.length&&isW(txt[e]))e++;
-    return txt.slice(s,e);
+    return {s:s,e:e};
   }
 })();
 </script>
