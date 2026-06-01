@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<!-- TEMPORARY touch-selection diagnostic. Traces the long-press selection pipeline on the
+     real device. Safe to delete after debugging. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>touch debug</title>
+<style>
+  html,body{margin:0;background:#FAFAF8;color:#3a2f1f;font:18px/1.7 Georgia,serif}
+  #wrap{padding:16px 16px 50vh}
+  p[data-paragraph-idx]{margin:0 0 1em}
+  /* mirrors the app: native selection off on coarse pointers */
+  @media (pointer: coarse){
+    p[data-paragraph-idx]{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  }
+  #hud{position:fixed;left:0;right:0;bottom:0;height:46vh;background:#111;color:#0f0;
+       font:11px/1.35 ui-monospace,Menlo,monospace;padding:8px;overflow:auto;white-space:pre-wrap;z-index:9999;border-top:2px solid #0a0}
+  #hud b{color:#fd6}
+  #bar{position:fixed;left:0;right:0;bottom:46vh;display:flex;gap:6px;padding:6px;background:#222;z-index:10000}
+  #bar button{flex:1;font:12px monospace;padding:8px;background:#333;color:#fff;border:1px solid #555;border-radius:4px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <p data-paragraph-idx="0">The dignity of the human person remains the unshakeable foundation upon which every just society must be built and continually renewed in truth.</p>
+  <p data-paragraph-idx="1">Technology serves the person only when it remains subordinate to truth and ordered toward the genuine flourishing of all peoples everywhere.</p>
+</div>
+<div id="bar">
+  <button id="caretBtn">Caret test (no-select vs text)</button>
+  <button id="clrBtn">Clear log</button>
+</div>
+<div id="hud"></div>
+<script>
+(function(){
+  var hud = document.getElementById('hud');
+  function log(msg){ var t=new Date().toISOString().slice(14,23); hud.innerHTML = '<b>'+t+'</b> '+msg+'\n'+hud.innerHTML; }
+  function nodeDesc(n){ if(!n) return 'null'; if(n.nodeType===3) return "TEXT('"+(n.textContent||'').slice(0,20).replace(/\n/g,' ')+"')"; return n.nodeName+(n.getAttribute&&n.getAttribute('data-paragraph-idx')!=null?'[p'+n.getAttribute('data-paragraph-idx')+']':''); }
+
+  // env
+  try { log('coarse pointer = ' + (window.matchMedia && matchMedia('(pointer: coarse)').matches)); } catch(e){ log('matchMedia err '+e.message); }
+  var p0 = document.querySelector('p[data-paragraph-idx="0"]');
+  log('p0 user-select = ' + (getComputedStyle(p0).webkitUserSelect||getComputedStyle(p0).userSelect));
+  log('caretRangeFromPoint exists = ' + !!document.caretRangeFromPoint + ' ; caretPositionFromPoint = ' + !!document.caretPositionFromPoint);
+
+  function pointToRange(x,y){
+    if(document.caretRangeFromPoint){ var r=document.caretRangeFromPoint(x,y); return {kind:'caretRangeFromPoint', range:r}; }
+    if(document.caretPositionFromPoint){ var pp=document.caretPositionFromPoint(x,y); if(!pp) return {kind:'caretPositionFromPoint', range:null}; var rr=document.createRange(); rr.setStart(pp.offsetNode,pp.offset); rr.collapse(true); return {kind:'caretPositionFromPoint', range:rr}; }
+    return {kind:'none', range:null};
+  }
+
+  // ---- caret hypothesis test ----
+  document.getElementById('caretBtn').addEventListener('click', function(){
+    var r = p0.getBoundingClientRect();
+    var x = r.left + r.width*0.4, y = r.top + r.height*0.5;
+    log('--- CARET TEST at ('+Math.round(x)+','+Math.round(y)+') ---');
+    var a = pointToRange(x,y);
+    log('user-select:none → '+a.kind+' → range='+(a.range?('start='+nodeDesc(a.range.startContainer)+' off='+a.range.startOffset):'NULL'));
+    var prev = p0.style.webkitUserSelect, prev2 = p0.style.userSelect;
+    p0.style.webkitUserSelect='text'; p0.style.userSelect='text';
+    var b = pointToRange(x,y);
+    log('user-select:text → '+b.kind+' → range='+(b.range?('start='+nodeDesc(b.range.startContainer)+' off='+b.range.startOffset):'NULL'));
+    p0.style.webkitUserSelect=prev; p0.style.userSelect=prev2;
+    log('--- end caret test ---');
+  });
+  document.getElementById('clrBtn').addEventListener('click', function(){ hud.innerHTML=''; });
+
+  // ---- long-press trace (mirrors the real controller) ----
+  var LONG=400, MOVE=10;
+  var phase='idle', timer=null, sx=0, sy=0, moves=0, maxMove=0;
+  function reset(reason){ if(timer){clearTimeout(timer);timer=null;} if(phase!=='idle') log('reset ('+reason+') from phase='+phase); phase='idle'; moves=0; maxMove=0; }
+  document.addEventListener('touchstart', function(e){
+    var t=e.touches[0]; if(!t) return;
+    log('touchstart target='+nodeDesc(e.target)+' @('+Math.round(t.clientX)+','+Math.round(t.clientY)+') cancelable='+e.cancelable);
+    sx=t.clientX; sy=t.clientY; moves=0; maxMove=0; phase='pressing';
+    timer=setTimeout(function(){
+      if(phase!=='pressing'){ log('longpress timer: phase no longer pressing ('+phase+')'); return; }
+      var res=pointToRange(sx,sy);
+      log('LONGPRESS fired → '+res.kind+' caret='+(res.range?nodeDesc(res.range.startContainer)+' off='+res.range.startOffset : 'NULL'));
+      if(!res.range){ log('  ✗ no caret → selection ABORTS (likely root cause)'); reset('no-caret'); return; }
+      if(res.range.startContainer.nodeType!==3){ log('  ✗ caret not a TEXT node → wordRangeAt returns null → ABORTS'); reset('not-text'); return; }
+      phase='selecting';
+      log('  ✓ SELECTING started (word="'+wordAt(res.range)+'")');
+    }, LONG);
+  }, {passive:false});
+  document.addEventListener('touchmove', function(e){
+    var t=e.touches[0]; if(!t) return;
+    moves++; var d=Math.hypot(t.clientX-sx,t.clientY-sy); if(d>maxMove)maxMove=d;
+    if(phase==='pressing'){ if(d>MOVE){ log('touchmove #'+moves+' moved '+Math.round(d)+'px > '+MOVE+' → CANCEL long-press (treated as scroll)'); reset('moved'); } }
+  }, {passive:false});
+  document.addEventListener('touchend', function(){
+    log('touchend phase='+phase+' moves='+moves+' maxMove='+Math.round(maxMove)+'px');
+    if(phase==='selecting'){ log('  → WOULD fire annotation-create (menu opens)'); }
+    reset('end');
+  });
+
+  function wordAt(range){
+    var n=range.startContainer; if(n.nodeType!==3) return '?';
+    var txt=n.textContent, o=range.startOffset, s=o,e=o;
+    var isW=function(c){return c&&/\S/.test(c)&&!/[.,;:!?()"']/.test(c)};
+    while(s>0&&isW(txt[s-1]))s--; while(e<txt.length&&isW(txt[e]))e++;
+    return txt.slice(s,e);
+  }
+})();
+</script>
+</body>
+</html>
