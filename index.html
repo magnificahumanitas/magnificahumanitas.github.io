@@ -91,6 +91,11 @@
           allow="clipboard-write; storage-access"
           loading="eager"></iframe>
 
+  <!-- First-party durable annotation store for the framed app. Owns the encrypted
+       IndexedDB annotation store on this (github.io) origin and talks to the framed NAS
+       app over an origin-checked postMessage protocol. -->
+  <script type="module" src="/storage-broker.js"></script>
+
   <script>
     (function () {
       var frame = document.getElementById('frame');
